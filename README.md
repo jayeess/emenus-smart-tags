@@ -1,146 +1,85 @@
 # eMenu Tables — Smart Tagging & Sentiment Analysis
 
-Automated AI-powered guest tagging and sentiment analysis module for the eMenu Tables SaaS platform. Analyzes reservation special requests and dietary preferences to produce structured CRM tags, detect urgent allergy/medical alerts, and trigger staff notifications.
+Full-stack AI-powered guest tagging and sentiment analysis application for the eMenu Tables SaaS platform. Deployed on Vercel with a React (Vite + Tailwind CSS) frontend and Python (FastAPI) serverless API.
+
+Analyzes reservation special requests and dietary preferences to produce structured CRM tags, detect urgent allergy/medical alerts, and trigger staff notifications — powered by Groq Llama-3.
+
+## Deploy to Vercel
+
+### One-Click Deploy
+
+1. Push this repository to GitHub
+2. Go to [vercel.com/new](https://vercel.com/new) and import the repository
+3. Add the `GROQ_API_KEY` environment variable (optional — works without it using the fallback engine)
+4. Click **Deploy**
+
+### Environment Variables (Vercel Dashboard)
+
+| Variable | Required | Description |
+|---|---|---|
+| `GROQ_API_KEY` | No* | API key from [console.groq.com](https://console.groq.com). Without it, the regex fallback engine is used. |
+| `GROQ_MODEL` | No | Groq model ID (default: `llama-3.1-70b-versatile`) |
+
+*The app is fully functional without a Groq API key — it uses a deterministic regex-based tagger as fallback.
 
 ## Architecture
 
 ```
-backend/
-├── app/
-│   ├── api/
-│   │   └── tag_routes.py          # FastAPI endpoints
-│   ├── core/
-│   │   ├── config.py              # Pydantic settings (env vars)
-│   │   └── database.py            # Async SQLAlchemy session factory
-│   ├── models/
-│   │   ├── base.py                # Base model + TenantMixin + TimestampMixin
-│   │   └── customer_profile.py    # CustomerProfile with JSONB smart_tags
-│   ├── schemas/
-│   │   └── tagging.py             # Pydantic request/response models
-│   ├── services/
-│   │   ├── ai_tagging_service.py  # Groq/Llama-3 AI engine + regex fallback
-│   │   ├── notification_service.py# Urgent alert dispatcher (WhatsApp/Email)
-│   │   └── unit_of_work.py        # Tenant-isolated DB transaction manager
-│   └── main.py                    # FastAPI app entry point
-├── tests/
-│   ├── test_ai_tagging_service.py
-│   ├── test_schemas.py
-│   └── test_tag_routes.py
-├── pyproject.toml
-└── .env.example
-frontend/
-└── src/components/
-    └── SmartTagBadge.tsx           # React tag badge component
+├── api/
+│   └── index.py                   # FastAPI serverless function (Vercel Python runtime)
+├── src/
+│   ├── components/
+│   │   ├── Layout.tsx             # Dashboard sidebar + header layout
+│   │   ├── SmartTagBadge.tsx      # Tag badges, sentiment badges, confidence meter
+│   │   └── ResultCard.tsx         # Analysis result display card
+│   ├── pages/
+│   │   ├── DashboardPage.tsx      # Overview with stats, features, recent analyses
+│   │   ├── AnalyzePage.tsx        # Tag analysis form with demo scenarios
+│   │   ├── HistoryPage.tsx        # Analysis history browser
+│   │   └── SettingsPage.tsx       # System status and configuration reference
+│   ├── lib/
+│   │   ├── api.ts                 # API client functions
+│   │   └── types.ts               # TypeScript type definitions
+│   ├── App.tsx                    # Route definitions
+│   ├── main.tsx                   # React entry point
+│   └── index.css                  # Tailwind CSS + custom animations
+├── backend/                       # Standalone backend (for non-Vercel deployments)
+│   ├── app/                       # Full FastAPI app with SQLAlchemy, UoW pattern
+│   └── tests/                     # 34 passing tests
+├── vercel.json                    # Vercel build + rewrite configuration
+├── package.json                   # Frontend dependencies
+├── requirements.txt               # Python dependencies (Vercel serverless)
+└── vite.config.ts                 # Vite + Tailwind configuration
 ```
 
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL async connection string (`postgresql+asyncpg://...`) |
-| `GROQ_API_KEY` | Yes | API key from [console.groq.com](https://console.groq.com) |
-| `GROQ_MODEL` | No | Groq model ID (default: `llama-3.1-70b-versatile`) |
-| `GROQ_TIMEOUT` | No | Request timeout in seconds (default: `30`) |
-| `GROQ_MAX_RETRIES` | No | Max retry attempts on Groq failure (default: `2`) |
-| `WHATSAPP_API_URL` | No | WhatsApp Business API endpoint |
-| `WHATSAPP_API_TOKEN` | No | WhatsApp bearer token |
-| `EMAIL_SMTP_HOST` | No | SMTP server hostname |
-| `EMAIL_SMTP_PORT` | No | SMTP port (default: `587`) |
-| `EMAIL_FROM` | No | Sender email address |
-| `EMAIL_USERNAME` | No | SMTP auth username |
-| `EMAIL_PASSWORD` | No | SMTP auth password |
-| `DEBUG` | No | Enable debug logging (default: `false`) |
-
-## Setup
-
-### Backend
+## Local Development
 
 ```bash
+# Install frontend dependencies
+npm install
+
+# Start frontend dev server (with API proxy)
+npm run dev
+
+# In a separate terminal — start the Python API
 cd backend
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your GROQ_API_KEY and DATABASE_URL
-
-# Run database migrations (create the table)
-# In production, use Alembic. For quick setup:
-python -c "
-import asyncio
-from app.core.database import engine
-from app.models import Base
-async def init():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-asyncio.run(init())
-"
-
-# Start the server
 uvicorn app.main:app --reload --port 8000
+
+# Run backend tests
+cd backend && pytest tests/ -v
 ```
 
-### Frontend
+## Features
 
-```bash
-# Copy SmartTagBadge.tsx into your React project's components directory
-cp frontend/src/components/SmartTagBadge.tsx <your-project>/src/components/
-
-# Usage in your React app:
-# import SmartTagBadge from './components/SmartTagBadge';
-# <SmartTagBadge smartTags={apiResponse.smart_tags} variant="card" />
-```
-
-### Run Tests
-
-```bash
-cd backend
-pytest tests/ -v
-```
-
-## API Reference
-
-### POST `/v1/reservations/analyze-tags`
-
-Analyze reservation text and generate smart tags.
-
-**Request Body:**
-```json
-{
-  "reservation_id": "550e8400-e29b-41d4-a716-446655440000",
-  "special_request_text": "This is our anniversary dinner. My wife has a severe nut allergy — she carries an epipen.",
-  "dietary_preferences": "Vegetarian, nut-free",
-  "tenant_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "customer_id": "d4e5f6a7-b8c9-0123-4567-89abcdef0123"
-}
-```
-
-**Response:**
-```json
-{
-  "reservation_id": "550e8400-e29b-41d4-a716-446655440000",
-  "customer_id": "d4e5f6a7-b8c9-0123-4567-89abcdef0123",
-  "tenant_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "smart_tags": {
-    "tags": ["Anniversary", "Dietary restrictions", "allergies"],
-    "sentiment": "Urgent",
-    "confidence": 0.95,
-    "summary": "Anniversary dinner with severe nut allergy requiring epipen — immediate kitchen alert needed.",
-    "analyzed_at": "2026-02-10T12:00:00Z",
-    "urgent_reason": "Detected urgent keyword: 'epipen'"
-  },
-  "notification_triggered": true
-}
-```
-
-### GET `/v1/customers/{customer_id}/tags?tenant_id=...`
-
-Retrieve stored smart tags for a customer profile.
+- **AI Tag Extraction** — Groq Llama-3 analyzes free-text to auto-generate CRM tags
+- **Urgent Detection** — Dual-layer (regex + LLM) catches anaphylaxis, epipen, severe allergies
+- **6 Demo Scenarios** — Pre-built test cases covering VIP, allergies, birthdays, medical alerts
+- **Real-time History** — Session-based analysis history with filtering
+- **Notification Triggers** — Urgent sentiment fires in-system/WhatsApp/Email alerts
+- **Graceful Fallback** — Works without Groq API key using regex engine (55% confidence)
+- **Multi-Tenant Isolation** — All data scoped by tenant_id
 
 ## CRM Tag Specification
 
@@ -155,6 +94,26 @@ Retrieve stored smart tags for a customer profile.
 | Dietary restrictions | Health | Red |
 | allergies | Health | Red |
 
-## Multi-Tenancy
+## API Reference
 
-Every database query is scoped by `tenant_id` via the `DefaultUnitOfWork` pattern. The `customer_profiles` table has a composite unique index on `(tenant_id, phone)` to prevent cross-tenant data leakage while allowing the same phone number across different restaurants.
+### POST `/api/v1/reservations/analyze-tags`
+
+```json
+{
+  "special_request_text": "Anniversary dinner. Severe nut allergy, carries epipen.",
+  "dietary_preferences": "Nut-free, vegetarian",
+  "customer_name": "James Whitfield"
+}
+```
+
+### GET `/api/v1/analysis-history`
+
+Returns all analyses from the current session.
+
+### GET `/api/v1/demo-scenarios`
+
+Returns 6 pre-built demo scenarios for testing.
+
+### GET `/api/health`
+
+Health check with Groq configuration status.

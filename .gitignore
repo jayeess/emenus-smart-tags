@@ -11,3 +11,4 @@ build/
 node_modules/
 .ruff_cache/
 .vercel/
+tsconfig.tsbuildinfo
